@@ -175,21 +175,58 @@ impl LevelsController {
     }
 
     // returns the found value if any. If not found, we return nil.
-    pub(crate) fn get(&self, key: &[u8]) -> Option<ValueStruct> {
+    pub(crate) fn get(&self, key: &[u8], max_vs: ValueStruct, _max_version: u64) -> Result<ValueStruct> {
         // It's important that we iterate the levels from 0 on upward.  The reason is, if we iterated
         // in opposite order, or in parallel (naively calling all the h.RLock() in some order) we could
         // read level L's tables post-compaction and level L+1's tables pre-compaction.  (If we do
         // parallelize this, we will need to call the h.RLock() function by increasing order of level
         // number.)
+        
+        // Check if this is a versioned key (has timestamp suffix)
+        let version = if key.len() >= 8 && key[key.len()-8..] == [255, 255, 255, 255, 255, 255, 255, 255] {
+            // This is a versioned key, parse the timestamp
+            crate::y::parse_ts(key)
+        } else {
+            // This is an original key, we need to find the latest version
+            // For now, use a very large timestamp to get the latest version
+            u64::MAX
+        };
+        let mut max_vs = max_vs;
+        
         for h in self.levels.iter() {
             h.lock_shared();
             if let Some(item) = h.get(key) {
+                let vs = item.value().clone();
                 h.unlock_shared();
-                return Some(item.value().clone());
+                
+                // In MVCC, we can read data with version <= read_ts
+                if version == u64::MAX {
+                    // Looking for the latest version
+                    if max_vs.version < vs.version {
+                        max_vs = vs;
+                    }
+                } else {
+                    // Looking for a specific version
+                    // Found the required version of the key, return immediately.
+                    if vs.version == version {
+                        return Ok(vs);
+                    }
+                    
+                    // Keep track of the highest version that's <= read_ts
+                    if vs.version <= version && max_vs.version < vs.version {
+                        max_vs = vs;
+                    }
+                }
+            } else {
+                h.unlock_shared();
             }
-            h.unlock_shared();
         }
-        None
+        
+        if max_vs.version > 0 {
+            Ok(max_vs)
+        } else {
+            Err(crate::Error::NotFound)
+        }
     }
 
     // cleanup all level's handler

@@ -15,6 +15,8 @@ pub struct ValueStruct {
     pub(crate) user_meta: u8,
     pub(crate) cas_counter: u64,
     pub(crate) value: Vec<u8>,
+    /// This field is not serialized. Only for internal usage.
+    pub(crate) version: u64,
 }
 
 impl ValueStruct {
@@ -24,6 +26,17 @@ impl ValueStruct {
             user_meta,
             cas_counter,
             value,
+            version: 0,
+        }
+    }
+    
+    pub(crate) fn new_with_version(value: Vec<u8>, meta: u8, user_meta: u8, cas_counter: u64, version: u64) -> ValueStruct {
+        ValueStruct {
+            meta,
+            user_meta,
+            cas_counter,
+            value,
+            version,
         }
     }
     pub(crate) const fn header_size() -> usize {

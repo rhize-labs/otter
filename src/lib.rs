@@ -13,6 +13,7 @@ pub mod kv;
 mod level_handler;
 mod log_file;
 mod manifest;
+mod oracle;
 mod options;
 mod skl;
 mod table;

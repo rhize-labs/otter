@@ -95,6 +95,8 @@ pub enum Error {
     TransactionClosed,
     #[error("Cannot write to read-only transaction")]
     ReadOnlyTransaction,
+    #[error("Database is closed")]
+    DBClosed,
     #[error("No room for write")]
     NoRoomForWrite,
     ////////////////////////////////

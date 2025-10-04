@@ -93,6 +93,10 @@ impl<T> Channel<T> {
         }
         true
     }
+    
+    pub fn is_closed(&self) -> bool {
+        self.is_close()
+    }
 }
 
 #[derive(Clone)]
@@ -202,6 +206,11 @@ impl Closer {
     /// Gets signaled when signal() is called.
     pub fn has_been_closed(&self) -> Channel<()> {
         self.closed.clone()
+    }
+    
+    /// Check if the closer has been closed
+    pub fn is_closed(&self) -> bool {
+        self.closed.is_closed()
     }
 
     /// Waiting until done

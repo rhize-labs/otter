@@ -29,6 +29,9 @@ raw_log.log
 *.db
 *.badger
 
+# Database files and directories
+[0-9]*/
+
 # Original Go BadgerDB reference implementation
 /badger/
 

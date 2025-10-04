@@ -69,6 +69,7 @@ pub(crate) struct Header {
     pub(crate) user_mata: u8,
     pub(crate) cas_counter: u64,
     pub(crate) cas_counter_check: u64,
+    pub(crate) version_check: u64,
 }
 
 impl Header {
@@ -85,6 +86,7 @@ impl Encode for Header {
         wt.write_u8(self.user_mata)?;
         wt.write_u64::<BigEndian>(self.cas_counter)?;
         wt.write_u64::<BigEndian>(self.cas_counter_check)?;
+        wt.write_u64::<BigEndian>(self.version_check)?;
         Ok(Self::encoded_size())
     }
 }
@@ -97,6 +99,7 @@ impl Decode for Header {
         self.user_mata = rd.read_u8()?;
         self.cas_counter = rd.read_u64::<BigEndian>()?;
         self.cas_counter_check = rd.read_u64::<BigEndian>()?;
+        self.version_check = rd.read_u64::<BigEndian>()?;
         Ok(())
     }
 }
@@ -112,6 +115,8 @@ pub struct Entry {
     pub(crate) value: Vec<u8>,
     // If nonzero, we will check if existing casCounter matches.
     pub(crate) cas_counter_check: u64,
+    // If nonzero, we will check if existing version matches (for MVCC CAS operations).
+    pub(crate) version_check: u64,
     // Fields maintained internally.
     pub(crate) offset: u32,
     pub(crate) cas_counter: AtomicU64,
@@ -125,6 +130,7 @@ impl Clone for Entry {
             user_meta: self.user_meta.clone(),
             value: self.value.clone(),
             cas_counter_check: self.cas_counter_check.clone(),
+            version_check: self.version_check.clone(),
             offset: self.offset.clone(),
             cas_counter: AtomicU64::new(self.get_cas_counter()),
         }
@@ -157,6 +163,11 @@ impl Entry {
         self
     }
 
+    pub fn version_check(mut self, version: u64) -> Self {
+        self.version_check = version;
+        self
+    }
+
     pub fn get_cas_counter(&self) -> u64 {
         self.cas_counter.load(Ordering::Acquire)
     }
@@ -185,6 +196,7 @@ impl Entry {
         entry.cas_counter = AtomicU64::new(h.cas_counter);
         entry.user_meta = h.user_mata;
         entry.cas_counter_check = h.cas_counter_check;
+        entry.version_check = h.version_check;
         let mut start = cursor_offset as usize + Header::encoded_size();
         entry
             .key
@@ -212,6 +224,7 @@ impl Encode for Entry {
         h.user_mata = self.user_meta;
         h.cas_counter = self.cas_counter.load(Ordering::Relaxed);
         h.cas_counter_check = self.cas_counter_check;
+        h.version_check = self.version_check;
         let mut buffer = vec![0u8; Header::encoded_size() + (h.k_len + h.v_len + 4) as usize];
         // write header
         let mut start = 0;
@@ -247,6 +260,7 @@ impl Decode for Entry {
         self.cas_counter = AtomicU64::new(h.cas_counter);
         self.user_meta = h.user_mata;
         self.cas_counter_check = h.cas_counter_check;
+        self.version_check = h.version_check;
         let sz = rd.read(&mut self.key)?;
         assert_eq!(sz, h.k_len as usize);
         let sz = rd.read(&mut self.value)?;
@@ -267,6 +281,7 @@ impl fmt::Display for Entry {
             .field("value", &self.value)
             .field("case=", &self.get_cas_counter())
             .field("check", &self.cas_counter_check)
+            .field("version_check", &self.version_check)
             .finish()
     }
 }

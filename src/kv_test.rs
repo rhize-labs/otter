@@ -224,32 +224,32 @@ async fn t_kv_cas() {
     for i in 0..n {
         let key = i.to_string().into_bytes();
         let value = i.to_string().into_bytes();
-        let got = kv.get_with_ext(&key).await.unwrap();
-        let pair = got.rl().await.clone();
-        let got_value = got.rl().await.get_value().await.unwrap();
+        let (got_value, cas_counter, version) = kv.get_with_version(&key).await.unwrap();
+        println!("Key: {}, Expected: {:?}, Got: {:?}, CAS: {}, Version: {}", 
+                 String::from_utf8_lossy(&key), value, got_value, cas_counter, version);
         assert_eq!(got_value, value, "{}", String::from_utf8_lossy(&key));
-        let counter = got.rl().await.counter();
         // cas counter from 1
-        assert_eq!(i + 1, counter as usize);
-        // store kv pair
+        assert_eq!(i + 1, cas_counter as usize);
+        // store kv pair with version info
         let entry = Entry::default()
-            .key(pair.key().to_vec())
-            .value(pair.get_value().await.unwrap())
-            .cas_counter(pair.counter());
-        items.push(entry);
+            .key(key.clone())
+            .value(got_value)
+            .cas_counter(cas_counter);
+        items.push((entry, version));
     }
 
     debug!("It should be all failed because comparse_and_set failed!!!");
     for i in 0..n {
         let key = i.to_string().into_bytes();
         let value = (i + 100).to_string().into_bytes();
-        let cc = items[i].get_cas_counter();
+        let (_, version) = &items[i];
+        let cc = items[i].0.get_cas_counter();
         let ret = kv.compare_and_set(key, value, cc + 1).await.unwrap_err();
         assert_eq!(ret.to_string(), Error::ValueCasMisMatch.to_string());
         assert_eq!(kv.to_ref().get_last_used_cas_counter() as usize, n + i + 1);
         tokio::time::sleep(Duration::from_millis(3)).await;
     }
-    for (cas, item) in items.iter().enumerate() {
+    for (cas, (item, _)) in items.iter().enumerate() {
         assert_eq!(cas + 1, item.get_cas_counter() as usize);
     }
 
@@ -261,8 +261,10 @@ async fn t_kv_cas() {
     for i in 0..n {
         let key = i.to_string().into_bytes();
         let value = format!("zzz{}", i).into_bytes();
+        let (_, version) = &items[i];
+        let cc = items[i].0.get_cas_counter();
         let ret = kv
-            .compare_and_set(key, value, items[i].get_cas_counter())
+            .compare_and_set(key, value, cc)
             .await;
         assert!(ret.is_ok(), "{}", i);
     }
@@ -270,10 +272,9 @@ async fn t_kv_cas() {
     for i in 0..n {
         let key = i.to_string().into_bytes();
         let value = format!("zzz{}", i).as_bytes().to_vec();
-        let got = kv.get_with_ext(&key).await.unwrap();
-        let got = got.rl().await;
-        assert_eq!(got.get_value().await.unwrap(), value);
-        assert_eq!(n * 2 + i + 1, got.counter() as usize);
+        let (got_value, got_cas_counter, _) = kv.get_with_version(&key).await.unwrap();
+        assert_eq!(got_value, value);
+        assert_eq!(n * 2 + i + 1, got_cas_counter as usize);
     }
     info!("store path: {}", kv.opt.dir)
 }
