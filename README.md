@@ -1,11 +1,15 @@
-# MelisDB
+# OtterDB
 
-[![Rust](https://github.com/laohanlinux/melisdb/workflows/Rust/badge.svg)](https://github.com/laohanlinux/melisdb/actions)
-[![Crates.io](https://img.shields.io/crates/v/melisdb.svg)](https://crates.io/crates/melisdb)
-[![Documentation](https://docs.rs/melisdb/badge.svg)](https://docs.rs/melisdb)
+<div align="center">
+  <img src="docs/Gemini_Generated_Image_dkex9udkex9udkex.png" alt="OtterDB Logo" width="200" height="200">
+</div>
+
+[![Rust](https://github.com/rhize-labs/otter/workflows/Rust/badge.svg)](https://github.com/rhize-labs/otter/actions)
+[![Crates.io](https://img.shields.io/crates/v/otterdb.svg)](https://crates.io/crates/otterdb)
+[![Documentation](https://docs.rs/otterdb/badge.svg)](https://docs.rs/otterdb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-MelisDB is a high-performance, embedded key-value database written in Rust. It implements the WiscKey design principles and provides a BadgerDB-compatible API, making it a drop-in replacement for applications using BadgerDB.
+OtterDB is a high-performance, embedded key-value database written in Rust. It implements the WiscKey design principles and provides a BadgerDB-compatible API, making it a drop-in replacement for applications using BadgerDB.
 
 ## 🚀 Features
 
@@ -21,7 +25,7 @@ MelisDB is a high-performance, embedded key-value database written in Rust. It i
 
 ### The WiscKey Foundation
 
-MelisDB is built upon the research and design principles from the [WiscKey paper](https://www.usenix.org/system/files/conference/fast16/fast16-papers-lu.pdf) by researchers at the University of Wisconsin, Madison. This groundbreaking work introduced the concept of separating keys and values in LSM-trees, dramatically improving write performance while maintaining read efficiency.
+OtterDB is built upon the research and design principles from the [WiscKey paper](https://www.usenix.org/system/files/conference/fast16/fast16-papers-lu.pdf) by researchers at the University of Wisconsin, Madison. This groundbreaking work introduced the concept of separating keys and values in LSM-trees, dramatically improving write performance while maintaining read efficiency.
 
 ### The BadgerDB Legacy
 
@@ -31,13 +35,13 @@ The original [BadgerDB](https://github.com/dgraph-io/badger) project, developed 
 
 [badger-rs](https://github.com/laohanlinux/badger-rs) was an ambitious Rust port of BadgerDB that aimed to bring the performance and design benefits of BadgerDB to the Rust ecosystem. This project laid the groundwork for understanding how to translate BadgerDB's Go implementation into idiomatic Rust code while maintaining compatibility and performance characteristics.
 
-### MelisDB: The Evolution
+### OtterDB: The Evolution
 
-MelisDB represents the next evolution of this lineage, building upon the solid foundation of badger-rs while incorporating lessons learned and improvements. The name "Melis" reflects the project's focus on being a "honey" of a database - sweet, efficient, and valuable.
+OtterDB represents the next evolution of this lineage, building upon the solid foundation of badger-rs while incorporating lessons learned and improvements. The name "Otter" comes from the otter being from the same family tree (Mustelidae) as the badger, but more evolved - just as OtterDB is the evolved descendant of BadgerDB, maintaining the same core DNA while being more advanced and refined.
 
 ## 🏗️ Architecture
 
-MelisDB follows the WiscKey architecture with these key components:
+OtterDB follows the WiscKey architecture with these key components:
 
 - **LSM-Tree**: Manages keys and metadata in sorted tables
 - **Value Log**: Stores large values separately for better performance
@@ -47,11 +51,11 @@ MelisDB follows the WiscKey architecture with these key components:
 
 ## 🛠️ Installation
 
-Add MelisDB to your `Cargo.toml`:
+Add OtterDB to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-melisdb = "0.1.0"
+otterdb = "0.1.0"
 ```
 
 ## 📚 Quick Start
@@ -59,7 +63,7 @@ melisdb = "0.1.0"
 ### Basic Usage
 
 ```rust
-use melisdb::{Options, KV};
+use otterdb::{Options, KV};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,25 +84,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### CLI Usage
 
-MelisDB includes a comprehensive CLI tool called `melis`:
+OtterDB includes a comprehensive CLI tool called `otter`:
 
 ```bash
 # Install the CLI
-cargo install melisdb --bin melis
+cargo install otterdb --bin otter
 
 # Run bank test (Jepsen-inspired consistency test)
-melis bank test --dir /tmp/test_db --duration 30s --accounts 100
+otter bank test --dir /tmp/test_db --duration 30s --accounts 100
 
 # Get database information
-melis info --dir /tmp/test_db
+otter info --dir /tmp/test_db
 
 # Stream data between databases
-melis stream --source /tmp/source_db --dest /tmp/dest_db
+otter stream --source /tmp/source_db --dest /tmp/dest_db
 ```
 
 ## 🧪 Testing
 
-MelisDB includes a comprehensive test suite, including:
+OtterDB includes a comprehensive test suite, including:
 
 - **Bank Test**: A Jepsen-inspired transactional consistency test
 - **Unit Tests**: Comprehensive coverage of all components
@@ -114,7 +118,7 @@ cargo test --release  # For performance tests
 
 ## 📊 Performance
 
-MelisDB is designed for high performance, especially in write-heavy scenarios:
+OtterDB is designed for high performance, especially in write-heavy scenarios:
 
 - **Write Performance**: Optimized for sequential writes to value log
 - **Read Performance**: Fast random reads with efficient key lookup
@@ -123,24 +127,24 @@ MelisDB is designed for high performance, especially in write-heavy scenarios:
 
 ## 🤝 Contributing
 
-We welcome contributions to MelisDB! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
+We welcome contributions to OtterDB! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
 
 ### Development Setup
 
 ```bash
-git clone https://github.com/rhize-labs/melisdb.git
-cd melisdb
+git clone https://github.com/rhize-labs/otter.git
+cd otter
 cargo build
 cargo test
 ```
 
 ## 📄 License
 
-MelisDB is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+OtterDB is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-MelisDB stands on the shoulders of giants and acknowledges the following contributions:
+OtterDB stands on the shoulders of giants and acknowledges the following contributions:
 
 ### Research Foundation
 - **University of Wisconsin, Madison**: For the groundbreaking WiscKey research that forms the theoretical foundation of this database
@@ -149,25 +153,25 @@ MelisDB stands on the shoulders of giants and acknowledges the following contrib
 ### Implementation Heritage
 - **Dgraph Team**: For creating the original [BadgerDB](https://github.com/dgraph-io/badger) in Go, which proved the practical viability of the WiscKey design
 - **badger-rs Contributors**: For the initial Rust port that demonstrated how to translate BadgerDB's concepts into idiomatic Rust code
-- **Rust Community**: For the excellent ecosystem and tooling that makes projects like MelisDB possible
+- **Rust Community**: For the excellent ecosystem and tooling that makes projects like OtterDB possible
 
 ### Special Thanks
 - The open-source community for continuous feedback and contributions
 - All users who have tested and provided feedback on early versions
-- Contributors to related projects that have influenced MelisDB's design
+- Contributors to related projects that have influenced OtterDB's design
 
 ## 🔗 Related Projects
 
 - [BadgerDB](https://github.com/dgraph-io/badger) - Original Go implementation
-- [badger-rs](https://github.com/laohanlinux/badger-rs) - Rust port that inspired MelisDB
+- [badger-rs](https://github.com/laohanlinux/badger-rs) - Rust port that inspired OtterDB
 - [WiscKey Paper](https://www.usenix.org/system/files/conference/fast16/fast16-papers-lu.pdf) - Original research paper
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/laohanlinux/melisdb/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/laohanlinux/melisdb/discussions)
-- **Documentation**: [docs.rs/melisdb](https://docs.rs/melisdb)
+- **Issues**: [GitHub Issues](https://github.com/rhize-labs/otter/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/rhize-labs/otter/discussions)
+- **Documentation**: [docs.rs/otterdb](https://docs.rs/otterdb)
 
 ---
 
-*MelisDB: Sweet, efficient, and valuable key-value storage for Rust applications.*
+*OtterDB: The evolved descendant of BadgerDB - playful, efficient, and valuable key-value storage for Rust applications.*

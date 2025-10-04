@@ -11,11 +11,11 @@ use std::time::{Duration, SystemTime};
 use tokio::time::sleep;
 use rand::Rng;
 
-use melisdb::{Options, KV, Error, Transaction, TransactionManager};
+use otterdb::{Options, KV, Error, Transaction, TransactionManager};
 
 #[derive(Subcommand)]
 pub enum BankCommands {
-    /// Execute bank test on MelisDB
+    /// Execute bank test on OtterDB
     Test {
         #[command(flatten)]
         test_args: BankTestArgs,

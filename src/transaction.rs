@@ -1,4 +1,4 @@
-//! Transaction support for MelisDB
+//! Transaction support for OtterDB
 //! 
 //! This module provides MVCC (Multi-Version Concurrency Control) transaction support
 //! similar to BadgerDB's transaction API. Transactions provide ACID guarantees

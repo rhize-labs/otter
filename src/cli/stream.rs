@@ -6,7 +6,7 @@
 use clap::Args;
 use std::path::PathBuf;
 
-use melisdb::{Options, KV};
+use otterdb::{Options, KV};
 
 #[derive(Args)]
 pub struct StreamArgs {

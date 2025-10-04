@@ -6,7 +6,7 @@
 use clap::Args;
 use std::path::PathBuf;
 
-use melisdb::{Options, KV};
+use otterdb::{Options, KV};
 
 #[derive(Args)]
 pub struct InfoArgs {
@@ -18,7 +18,7 @@ pub struct InfoArgs {
     #[arg(long)]
     histogram: bool,
 
-    /// Show keys stored in MelisDB
+    /// Show keys stored in OtterDB
     #[arg(long)]
     show_keys: bool,
 

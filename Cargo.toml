@@ -1,5 +1,5 @@
 [package]
-name = "melisdb"
+name = "otterdb"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.70"
@@ -91,7 +91,7 @@ debug-assertions = false
 codegen-units=1
 
 [[bin]]
-name = "melis"
+name = "otter"
 path = "src/main.rs"
 
 [lints.rust]
