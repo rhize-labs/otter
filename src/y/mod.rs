@@ -49,10 +49,6 @@ pub enum Error {
     /// operation needs to be retried.
     #[error("Unable to find log file. Please retry")]
     ValueRetry,
-    /// Returned when a `CompareAndSet` operation has failed due
-    /// to a counter mismatch.
-    #[error("CompareAndSet failed due to counter mismatch")]
-    ValueCasMisMatch,
     /// Returned
     #[error("SetIfAbsent failed since key already exists")]
     ValueKeyExists,

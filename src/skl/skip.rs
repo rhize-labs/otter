@@ -858,7 +858,6 @@ mod tests {
         st.put(b"key2", ValueStruct::new(val4.to_vec(), 12, 0, 50000));
         let v = st.get(b"key2").unwrap();
         assert_eq!(12, v.meta);
-        assert_eq!(50000, v.cas_counter);
     }
 
     #[test]
@@ -879,7 +878,7 @@ mod tests {
                 // let st = unsafe {st.as_ref()};
                 st_ptr.put(
                     key.as_bytes(),
-                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0, 0),
+                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0),
                 )
             }));
         }
@@ -910,7 +909,7 @@ mod tests {
                 // let st = unsafe {st.as_ref()};
                 st_ptr.put(
                     key.as_bytes(),
-                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0, 0),
+                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0),
                 )
             }));
         }
@@ -953,8 +952,6 @@ mod tests {
                         .parse::<i32>()
                         .unwrap();
                     assert!(0 <= v && v < 100);
-                    let cas_counter = value.cas_counter;
-                    assert_eq!(v as u64, cas_counter);
                 }
             });
             waits.push(join);
