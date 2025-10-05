@@ -7,27 +7,37 @@ use std::io::{Cursor, Write};
 
 /// `ValueStruct` represents the value info that can be associated with a key, but also the internal
 /// Meta field.
-/// |`meta`|`user_meta`|`cas_counter`|`value_size`|`value`|
+/// |`meta`|`user_meta`|`value_size`|`value`|
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ValueStruct {
     pub(crate) meta: u8,
     pub(crate) user_meta: u8,
-    pub(crate) cas_counter: u64,
     pub(crate) value: Vec<u8>,
+    /// This field is not serialized. Only for internal usage.
+    pub(crate) version: u64,
 }
 
 impl ValueStruct {
-    pub(crate) fn new(value: Vec<u8>, meta: u8, user_meta: u8, cas_counter: u64) -> ValueStruct {
+    pub(crate) fn new(value: Vec<u8>, meta: u8, user_meta: u8) -> ValueStruct {
         ValueStruct {
             meta,
             user_meta,
-            cas_counter,
             value,
+            version: 0,
+        }
+    }
+    
+    pub(crate) fn new_with_version(value: Vec<u8>, meta: u8, user_meta: u8, version: u64) -> ValueStruct {
+        ValueStruct {
+            meta,
+            user_meta,
+            value,
+            version,
         }
     }
     pub(crate) const fn header_size() -> usize {
-        10
+        2
     }
 
     pub(crate) fn size(&self) -> usize {
@@ -39,7 +49,6 @@ impl ValueStruct {
         let mut cursor = Cursor::new(buffer);
         cursor.write_u8(self.meta)?;
         cursor.write_u8(self.user_meta)?;
-        cursor.write_u64::<BigEndian>(self.cas_counter)?;
         cursor.write_all(&self.value)?;
         Ok(())
     }
@@ -48,7 +57,6 @@ impl ValueStruct {
         let mut cursor = Cursor::new(buffer);
         self.meta = cursor.read_u8()?;
         self.user_meta = cursor.read_u8()?;
-        self.cas_counter = cursor.read_u64::<BigEndian>()?;
         if let Some(slice) = buffer.get(Self::header_size()..) {
             self.value.extend_from_slice(slice);
         }
@@ -59,10 +67,9 @@ impl ValueStruct {
     pub(crate) fn pretty(&self) -> String {
         use crate::hex_str;
         format!(
-            "meta: {}, user_meta: {}, cas: {}, value: {}",
+            "meta: {}, user_meta: {}, value: {}",
             self.meta,
             self.user_meta,
-            self.cas_counter,
             hex_str(&self.value)
         )
     }

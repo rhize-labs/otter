@@ -129,13 +129,11 @@ mod utils {
             let v = value.as_ref().unwrap().value();
             assert_eq!(v.value, format!("{}", n - 1).as_bytes());
             assert_eq!(v.meta, 'A' as u8);
-            assert_eq!(v.cas_counter, n as u64 - 1);
             let value = iter.prev();
             assert!(value.is_some());
             let v = value.as_ref().unwrap().value();
             assert_eq!(v.value, format!("{}", n - 2).as_bytes());
             assert_eq!(v.meta, 'A' as u8);
-            assert_eq!(v.cas_counter, n as u64 - 2);
         }
     }
 
@@ -205,7 +203,6 @@ mod utils {
                 let value = value.value();
                 assert_eq!(value.value, format!("{}", count).as_bytes().to_vec());
                 assert_eq!(value.meta, 'A' as u8);
-                assert_eq!(value.cas_counter, count as u64);
                 count += 1;
             }
             assert_eq!(count, n as isize);
@@ -227,7 +224,6 @@ mod utils {
                 let value = value.as_ref().unwrap().value();
                 assert_eq!(value.value, format!("{}", i).as_bytes().to_vec());
                 assert_eq!(value.meta, 'A' as u8);
-                assert_eq!(value.cas_counter, i as u64);
             }
             assert!(iter.prev().is_none());
         }
@@ -286,7 +282,6 @@ mod utils {
                 let value = item.value();
                 assert_eq!(format!("{}", count).as_bytes().to_vec(), value.value);
                 assert_eq!('A' as u8, value.meta);
-                assert_eq!(count, value.cas_counter);
                 count += 1;
             }
             assert_eq!(count, n as u64);
@@ -315,7 +310,6 @@ mod utils {
                     value.value
                 );
                 assert_eq!('A' as u8, value.meta);
-                assert_eq!(n as u64 - 1 - count, value.cas_counter);
             }
             assert_eq!(count + 1, n as u64);
         }

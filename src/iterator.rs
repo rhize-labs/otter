@@ -131,7 +131,7 @@ impl KVItemInner {
             vptr: value.value,
             meta: value.meta,
             user_meta: value.user_meta,
-            cas_counter: Arc::new(AtomicU64::new(value.cas_counter)),
+            cas_counter: Arc::new(AtomicU64::new(0)),
             wg: Closer::new("kv".to_owned()),
             err: Ok(()),
         }
@@ -469,7 +469,7 @@ impl IteratorExt {
             let mut item = item.wl().await;
             item.meta = vs.meta;
             item.user_meta = vs.user_meta;
-            item.cas_counter.store(vs.cas_counter, Ordering::Release);
+            item.cas_counter.store(0, Ordering::Release);
             item.key.extend(self.itr.peek().as_ref().unwrap().key());
             item.vptr.extend(&vs.value);
             item.value.lock().await.clear();

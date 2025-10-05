@@ -67,8 +67,6 @@ pub(crate) struct Header {
     pub(crate) v_len: u32,
     pub(crate) meta: u8,
     pub(crate) user_mata: u8,
-    pub(crate) cas_counter: u64,
-    pub(crate) cas_counter_check: u64,
 }
 
 impl Header {
@@ -83,8 +81,6 @@ impl Encode for Header {
         wt.write_u32::<BigEndian>(self.v_len)?;
         wt.write_u8(self.meta)?;
         wt.write_u8(self.user_mata)?;
-        wt.write_u64::<BigEndian>(self.cas_counter)?;
-        wt.write_u64::<BigEndian>(self.cas_counter_check)?;
         Ok(Self::encoded_size())
     }
 }
@@ -95,14 +91,11 @@ impl Decode for Header {
         self.v_len = rd.read_u32::<BigEndian>()?;
         self.meta = rd.read_u8()?;
         self.user_mata = rd.read_u8()?;
-        self.cas_counter = rd.read_u64::<BigEndian>()?;
-        self.cas_counter_check = rd.read_u64::<BigEndian>()?;
         Ok(())
     }
 }
 
-/// Entry provides Key, Value and if required, cas_counter_check to kv.batch_set() API.
-/// If cas_counter_check is provided, it would be compared against the current `cas_counter`
+/// Entry provides Key, Value for kv.batch_set() API.
 /// assigned to this key-value. Set be done on this key only if the counters match.
 #[derive(Default, Debug, Getters, Setters)]
 pub struct Entry {
@@ -110,11 +103,8 @@ pub struct Entry {
     pub(crate) meta: u8,
     pub(crate) user_meta: u8,
     pub(crate) value: Vec<u8>,
-    // If nonzero, we will check if existing casCounter matches.
-    pub(crate) cas_counter_check: u64,
     // Fields maintained internally.
     pub(crate) offset: u32,
-    pub(crate) cas_counter: AtomicU64,
 }
 
 impl Clone for Entry {
@@ -124,9 +114,7 @@ impl Clone for Entry {
             meta: self.meta.clone(),
             user_meta: self.user_meta.clone(),
             value: self.value.clone(),
-            cas_counter_check: self.cas_counter_check.clone(),
             offset: self.offset.clone(),
-            cas_counter: AtomicU64::new(self.get_cas_counter()),
         }
     }
 }
@@ -152,19 +140,6 @@ impl Entry {
         self
     }
 
-    pub fn cas_counter_check(mut self, cas: u64) -> Self {
-        self.cas_counter_check = cas;
-        self
-    }
-
-    pub fn get_cas_counter(&self) -> u64 {
-        self.cas_counter.load(Ordering::Acquire)
-    }
-
-    pub fn cas_counter(self, cas: u64) -> Self {
-        self.cas_counter.store(cas, Ordering::Release);
-        self
-    }
 
     pub fn hex_str(&self) -> String {
         String::from_utf8_lossy(&self.key).to_string()
@@ -182,9 +157,7 @@ impl Entry {
         entry.value = vec![0u8; h.v_len as usize];
         entry.meta = h.meta;
         entry.offset = cursor_offset as u32;
-        entry.cas_counter = AtomicU64::new(h.cas_counter);
         entry.user_meta = h.user_mata;
-        entry.cas_counter_check = h.cas_counter_check;
         let mut start = cursor_offset as usize + Header::encoded_size();
         entry
             .key
@@ -210,8 +183,6 @@ impl Encode for Entry {
         h.v_len = self.value.len() as u32;
         h.meta = self.meta;
         h.user_mata = self.user_meta;
-        h.cas_counter = self.cas_counter.load(Ordering::Relaxed);
-        h.cas_counter_check = self.cas_counter_check;
         let mut buffer = vec![0u8; Header::encoded_size() + (h.k_len + h.v_len + 4) as usize];
         // write header
         let mut start = 0;
@@ -244,9 +215,7 @@ impl Decode for Entry {
         self.value = vec![0u8; h.v_len as usize];
         self.meta = h.meta;
         // self.offset = cursor_offset as u32;
-        self.cas_counter = AtomicU64::new(h.cas_counter);
         self.user_meta = h.user_mata;
-        self.cas_counter_check = h.cas_counter_check;
         let sz = rd.read(&mut self.key)?;
         assert_eq!(sz, h.k_len as usize);
         let sz = rd.read(&mut self.value)?;
@@ -265,8 +234,6 @@ impl fmt::Display for Entry {
             .field("user_meta", &self.user_meta)
             .field("offset", &self.offset)
             .field("value", &self.value)
-            .field("case=", &self.get_cas_counter())
-            .field("check", &self.cas_counter_check)
             .finish()
     }
 }
@@ -920,7 +887,6 @@ impl ValueLogCore {
                 ne.key.clone_from(&entry.key); // TODO avoid copy
                 ne.value.clone_from(&entry.value);
                 // CAS counter check. Do not rewrite if key has a newer value.
-                ne.cas_counter_check = vs.cas_counter;
                 write_batch.push(ne);
             }
         }
@@ -1146,7 +1112,7 @@ impl ValueLogCore {
                             let mut unexpect_entry = Entry::default();
                             unexpect_entry.dec(&mut io::Cursor::new(buf))?;
                             unexpect_entry.offset = vptr.offset;
-                            if unexpect_entry.get_cas_counter() == entry.get_cas_counter() {
+                            if true {
                                 info!("Latest Entry Header in LSM: {}", unexpect_entry);
                                 info!("Latest Entry in Log: {}", entry);
                             }

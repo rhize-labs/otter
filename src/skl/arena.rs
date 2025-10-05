@@ -147,8 +147,8 @@ mod tests {
         let value = ValueStruct {
             meta: 1,
             user_meta: 1,
-            cas_counter: 2,
             value: v,
+            version: 0,
         };
         let (start, n) = arena.put_val(&value);
         let load_value = arena.get_val(start, n);

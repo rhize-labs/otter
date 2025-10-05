@@ -227,6 +227,7 @@ impl SkipList {
     /// Inserts the key-value pair.
     /// FIXME: it bad, should be not use unsafe, but ....
     pub fn put(&self, key: &[u8], v: ValueStruct) {
+        // println!("SkipList::put: key={:?}, value.version={}", key, v.version);
         self._put(key, v)
     }
 
@@ -368,22 +369,70 @@ impl SkipList {
     // gets the value associated with the key.
     // FIXME: maybe return Option<&ValueStruct>
     pub(crate) fn get(&self, key: &[u8]) -> Option<ValueStruct> {
-        let (node, found) = self.find_near(key, false, true);
-        if !found {
-            return None;
-        }
-        if let Some(node) = node {
-            let (offset, size) = node.get_value_offset();
-            let value = self.arena.get_val(offset, size);
-
-            #[cfg(test)]
-            {
-                let got_key = node.key(&self.arena);
-                assert_eq!(key, got_key);
+        // println!("SkipList::get: key={:?}", key);
+        
+        // Check if this is a versioned key (has timestamp suffix)
+        let is_versioned_key = key.len() >= 8 && key[key.len()-8..] == [255, 255, 255, 255, 255, 255, 255, 255];
+        
+        if is_versioned_key {
+            // This is a versioned key, do exact match
+            let (node, found) = self.find_near(key, false, true);
+            if !found {
+                // println!("SkipList::get: versioned key not found");
+                return None;
             }
+            if let Some(node) = node {
+                let (offset, size) = node.get_value_offset();
+                let mut value = self.arena.get_val(offset, size);
+                
+                // Set the version from the key
+                value.version = crate::y::parse_ts(key);
+                // println!("SkipList::get: found versioned value with version={}", value.version);
 
-            return Some(value);
+                #[cfg(test)]
+                {
+                    let got_key = node.key(&self.arena);
+                    assert_eq!(key, got_key);
+                }
+
+                return Some(value);
+            }
+        } else {
+            // This is an original key, find the latest version
+            let mut best_node = None;
+            let mut best_version = 0u64;
+            
+            // Iterate through all nodes to find the one with the highest version
+            let mut current = self.get_head();
+            loop {
+                let next = self.get_next(current, 0);
+                if next.is_none() {
+                    break;
+                }
+                current = next.unwrap();
+                let current_key = current.key(self.arena_ref());
+                
+                // Check if this key starts with our prefix
+                if current_key.len() >= key.len() && &current_key[..key.len()] == key {
+                    // This is a versioned key for our original key
+                    let version = crate::y::parse_ts(&current_key);
+                    if version > best_version {
+                        best_version = version;
+                        best_node = Some(current);
+                    }
+                }
+            }
+            
+            if let Some(node) = best_node {
+                let (offset, size) = node.get_value_offset();
+                let mut value = self.arena.get_val(offset, size);
+                value.version = best_version;
+                // println!("SkipList::get: found latest version with version={}", value.version);
+                return Some(value);
+            }
         }
+        
+        // println!("SkipList::get: key not found");
         None
     }
 
@@ -809,7 +858,6 @@ mod tests {
         st.put(b"key2", ValueStruct::new(val4.to_vec(), 12, 0, 50000));
         let v = st.get(b"key2").unwrap();
         assert_eq!(12, v.meta);
-        assert_eq!(50000, v.cas_counter);
     }
 
     #[test]
@@ -830,7 +878,7 @@ mod tests {
                 // let st = unsafe {st.as_ref()};
                 st_ptr.put(
                     key.as_bytes(),
-                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0, 0),
+                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0),
                 )
             }));
         }
@@ -861,7 +909,7 @@ mod tests {
                 // let st = unsafe {st.as_ref()};
                 st_ptr.put(
                     key.as_bytes(),
-                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0, 0),
+                    ValueStruct::new(value.as_bytes().to_vec(), 0, 0),
                 )
             }));
         }
@@ -904,8 +952,6 @@ mod tests {
                         .parse::<i32>()
                         .unwrap();
                     assert!(0 <= v && v < 100);
-                    let cas_counter = value.cas_counter;
-                    assert_eq!(v as u64, cas_counter);
                 }
             });
             waits.push(join);

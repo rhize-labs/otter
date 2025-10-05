@@ -1,11 +1,11 @@
-# MelisDB Test Coverage Report
+# OtterDB Test Coverage Report
 
-This document provides a comprehensive comparison between the test suites of the original Go BadgerDB and the Rust MelisDB implementation.
+This document provides a comprehensive comparison between the test suites of the original Go BadgerDB and the Rust OtterDB implementation.
 
 ## Overview
 
 - **Go BadgerDB Tests**: 263 test functions across 25 test files
-- **Rust MelisDB Tests**: 88 test functions across 15 test files
+- **Rust OtterDB Tests**: 88 test functions across 15 test files
 - **Coverage**: ~33% of Go tests have Rust equivalents
 
 ## Test Categories
@@ -343,7 +343,7 @@ This document provides a comprehensive comparison between the test suites of the
 
 ## Conclusion
 
-MelisDB has achieved **excellent coverage** in core functionality with **100% passing** tests for:
+OtterDB has achieved **excellent coverage** in core functionality with **100% passing** tests for:
 - SkipList operations
 - Level management
 - Utility functions

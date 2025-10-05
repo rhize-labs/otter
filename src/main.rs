@@ -9,8 +9,8 @@ use std::path::PathBuf;
 mod cli;
 
 #[derive(Parser)]
-#[command(name = "melis")]
-#[command(about = "Tools to manage MelisDB database.")]
+#[command(name = "otter")]
+#[command(about = "Tools to manage OtterDB database.")]
 #[command(version)]
 struct Cli {
     /// Directory where the LSM tree files are located (required)
@@ -27,7 +27,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run bank test on MelisDB
+    /// Run bank test on OtterDB
     Bank {
         /// Number of accounts in the bank
         #[arg(long, short = 'a', default_value = "10000")]
@@ -36,7 +36,7 @@ enum Commands {
         #[command(subcommand)]
         bank_command: cli::bank::BankCommands,
     },
-    /// Health info about MelisDB database
+    /// Health info about OtterDB database
     Info {
         #[command(flatten)]
         info_args: cli::info::InfoArgs,

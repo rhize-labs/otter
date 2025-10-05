@@ -1,10 +1,10 @@
 // Removed unstable features for stable Rust compatibility
 
 
-/// MelisDB is an embedded key-value database.
+/// OtterDB is an embedded key-value database.
 ///
-/// MelisDB is a library written in Rust that implements a BadgerDB-compatible database.
-/// MelisDB implements all features of the original BadgerDB.
+/// OtterDB is a library written in Rust that implements a BadgerDB-compatible database.
+/// OtterDB implements all features of the original BadgerDB.
 use std::mem::align_of;
 
 mod event;
@@ -13,6 +13,7 @@ pub mod kv;
 mod level_handler;
 mod log_file;
 mod manifest;
+mod oracle;
 mod options;
 mod skl;
 mod table;

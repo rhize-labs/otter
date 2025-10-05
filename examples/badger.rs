@@ -5,8 +5,8 @@ async fn main() {
         .with_env_filter(env)
         .try_init()
         .unwrap();
-    let opt = melisdb::Options::default();
-    let kv = melisdb::KV::open(opt).await.unwrap();
+    let opt = otterdb::Options::default();
+    let kv = otterdb::KV::open(opt).await.unwrap();
     kv.set(
         b"hello word".to_vec(),
         b">>>>>I LOVE YOU!<<<<<".to_vec(),

@@ -63,6 +63,12 @@ pub struct Closers {
     pub value_gc: Closer,
 }
 
+impl Closers {
+    pub fn is_closed(&self) -> bool {
+        self.writes.is_closed()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FlushTask {
     mt: Option<SkipList>,
@@ -103,9 +109,8 @@ pub struct KVCore {
     pub mem_st_manger: Arc<SkipListManager>,
     // Add here only AFTER pushing to flush_ch
     pub write_ch: Channel<Request>,
-    // Incremented in the non-concurrently accessed write loop.  But also accessed outside. So
-    // we use an atomic op.
-    pub(crate) last_used_cas_counter: Arc<AtomicU64>,
+    // Timestamp counter for transaction management
+    pub(crate) ts_counter: Arc<AtomicU64>,
     share_lock: TArcRW<()>,
 }
 
@@ -157,9 +162,18 @@ impl KVCore {
 
     // get returns the value in `mem_table` or disk for given key.
     // Note that value will include meta byte.
+    //
+    // IMPORTANT: We should never write an entry with an older timestamp for the same key, We need to
+    // maintain this invariant to search for the latest value of a key, or else we need to search in all
+    // tables and find the max version among them.  To maintain this invariant, we also need to ensure
+    // that all versions of a key are always present in the same table from level 1, because compaction
+    // can push any table down.
     #[inline]
     pub(crate) fn _get(&self, key: &[u8]) -> Result<ValueStruct> {
-        event::get_metrics().num_gets.inc();
+        if self.closers.is_closed() {
+            return Err(Error::DBClosed);
+        }
+        
         let p = crossbeam_epoch::pin();
         let tables = self.get_mem_tables(&p);
         // Must dereference skip list
@@ -170,35 +184,78 @@ impl KVCore {
         };
         defer! {decref_tables()};
 
-        crate::event::get_metrics().num_gets.inc(); // TODO add metrics
+        let mut max_vs = ValueStruct::default();
+        
+        // Check if this is a versioned key (has timestamp suffix)
+        let version = if key.len() >= 8 && key[key.len()-8..] == [255, 255, 255, 255, 255, 255, 255, 255] {
+            // This is a versioned key, parse the timestamp
+            crate::y::parse_ts(key)
+        } else {
+            // This is an original key, we need to find the latest version
+            // For now, use a very large timestamp to get the latest version
+            u64::MAX
+        };
 
+        // println!("_get: key={:?}, version={}", key, version);
+        event::get_metrics().num_gets.inc();
+        
         for tb in tables.iter() {
             event::get_metrics().num_mem_tables_gets.inc();
             let st = unsafe { tb.as_ref().unwrap() };
             let vs = st.get(key);
-            crate::event::get_metrics().num_mem_tables_gets.inc();
+            event::get_metrics().num_mem_tables_gets.inc();
+            
             if vs.is_none() {
                 continue;
             }
             let vs = vs.unwrap();
-            if (vs.meta & MetaBit::BIT_DELETE.bits()) > 0 {
-                return Err(Error::NotFound);
-            }
-            if !vs.value.is_empty() {
-                return Ok(vs);
+            
+                // println!("_get: found vs with version={}", vs.version);
+            
+            // In MVCC, we can read data with version <= read_ts
+            if version == u64::MAX {
+                // Looking for the latest version
+                if max_vs.version < vs.version {
+                    // println!("_get: updating max_vs from {} to {}", max_vs.version, vs.version);
+                    max_vs = vs;
+                }
+            } else {
+                // Looking for a specific version
+                // Found the required version of the key, return immediately.
+                if vs.version == version {
+                    // println!("_get: exact version match, returning vs");
+                    event::get_metrics().num_gets_with_results.inc();
+                    // Check if the value is empty (deleted key)
+                    if vs.value.is_empty() {
+                        return Err(crate::Error::NotFound);
+                    }
+                    return Ok(vs);
+                }
+                
+                // Keep track of the highest version that's <= read_ts
+                if vs.version <= version && max_vs.version < vs.version {
+                    // println!("_get: updating max_vs from {} to {}", max_vs.version, vs.version);
+                    max_vs = vs;
+                }
             }
         }
-        //#[cfg(test)]
-        //info!(
-        //  "found from disk table, key #{}, {:?}",
-        // crate::y::hex_str(key),
-        // self.must_lc()
-        //);
-        let vs = self.must_lc().get(key).ok_or(NotFound)?;
-        if (vs.meta & MetaBit::BIT_DELETE.bits()) > 0 {
-            return Err(Error::NotFound);
+        
+        // Search in LSM tree with the max version found in memtables
+        // println!("_get: max_vs.version={}, calling levels.get", max_vs.version);
+        let result = self.must_lc().get(key, max_vs, 0);
+        
+        // Check if the result is an empty value (deleted key)
+        match result {
+            Ok(vs) => {
+                if vs.value.is_empty() {
+                    // Empty value means the key was deleted
+                    Err(crate::Error::NotFound)
+                } else {
+                    Ok(vs)
+                }
+            }
+            Err(e) => Err(e),
         }
-        Ok(vs)
     }
 
 
@@ -239,18 +296,6 @@ impl KVCore {
         // replaying, we will think that these CAS operations should fail, when they are actually
         // valid.
 
-        // There is code (in flush_mem_table) whose correctness depends on us generating CAS Counter
-        // values _before_ we modify s.vptr here.
-        for req in reqs.iter() {
-            let entries = &req.entries;
-            let counter_base = self.new_cas_counter(entries.len() as u64);
-            for (idx, entry) in entries.iter().enumerate() {
-                entry
-                    .entry()
-                    .cas_counter
-                    .store(counter_base + idx as u64, Ordering::Release);
-            }
-        }
 
         if let Err(err) = self.vlog.as_ref().unwrap().write(reqs.clone()).await {
             for req in reqs.iter() {
@@ -339,8 +384,8 @@ impl KVCore {
                 let value = ValueStruct {
                     meta: 0,
                     user_meta: 0,
-                    cas_counter: self.get_last_used_cas_counter(),
                     value: offset,
+                    version: 0,
                 };
                 task.must_mt().put(_HEAD, value);
             }
@@ -465,34 +510,6 @@ impl KVCore {
 
             let mut _old_cas = 0;
 
-            if entry.cas_counter_check != 0 {
-                // TODO FIXME if not found the key，maybe push something to resp_ch
-                let old_value = self._get(&entry.key);
-                if old_value.is_err() {
-                    resp_ch.send(Err(old_value.unwrap_err())).await.unwrap();
-                    continue;
-                }
-
-                let old_value = old_value.unwrap();
-
-                _old_cas = old_value.cas_counter;
-
-                // No need to decode existing value. Just need old CAS counter.
-                if old_value.cas_counter != entry.cas_counter_check {
-                    resp_ch.send(Err(Error::ValueCasMisMatch)).await.unwrap();
-
-                    #[cfg(test)]
-                    warn!(
-                        "tid:{}, abort cas check, #{}, old_cas:{}, check_cas: {}, old_value:{}, new_val: {}",
-                        tid,
-                        crate::y::hex_str(&entry.key),
-                        _old_cas, entry.cas_counter_check,
-                        crate::y::hex_str(&old_value.value),
-                        crate::y::hex_str(&entry.value));
-
-                    continue;
-                }
-            }
 
             if entry.meta == MetaBit::BIT_SET_IF_ABSENT.bits() {
                 // Someone else might have written a value, so lets check again if key exists.
@@ -507,10 +524,12 @@ impl KVCore {
             let key;
             let value;
             if self.should_write_value_to_lsm(&entry) {
-                let cas = entry.get_cas_counter();
                 let (_key, _value) = (entry.key, entry.value);
-                key = _key;
-                value = ValueStruct::new(_value, entry.meta, entry.user_meta, cas);
+                // Append timestamp to key for MVCC consistency
+                let ts = self.ts_counter.fetch_add(1, Ordering::SeqCst);
+                key = crate::y::key_with_ts(&_key, ts);
+                value = ValueStruct::new_with_version(_value.clone(), entry.meta, entry.user_meta, ts);
+                // println!("write_to_lsm: writing key={:?}, ts={}, value={:?}", key, ts, _value);
                 // Will include deletion/tombstone case.
                 debug!("Lsm ok, the value not at vlog file");
             } else {
@@ -518,26 +537,25 @@ impl KVCore {
                 let ptr = ptr.unwrap();
                 let mut wt = Cursor::new(vec![0u8; ValuePointer::value_pointer_encoded_size()]);
                 ptr.enc(&mut wt).unwrap();
-                let cas = entry.get_cas_counter();
-                key = entry.key;
-                value = ValueStruct::new(
+                // Append timestamp to key for MVCC consistency
+                let ts = self.ts_counter.fetch_add(1, Ordering::SeqCst);
+                key = crate::y::key_with_ts(&entry.key, ts);
+                value = ValueStruct::new_with_version(
                     wt.into_inner(),
                     entry.meta | MetaBit::BIT_VALUE_POINTER.bits(),
                     entry.user_meta,
-                    cas,
+                    ts,
                 );
+                // println!("write_to_lsm: writing key={:?}, ts={}, value_pointer", key, ts);
             }
             self.must_mt().put(&key, value);
 
             #[cfg(test)]
             debug!(
-                "tid:{}, st:{}, key #{:?}, old_cas:{}, new_cas:{}, check_cas:{}, value #{:?} has inserted into SkipList!!!",
+                "tid:{}, st:{}, key #{:?}, value #{:?} has inserted into SkipList!!!",
                 tid,
                 self.must_mt().id(),
                 String::from_utf8_lossy(&key),
-                _old_cas,
-                debug_entry.get_cas_counter(),
-                debug_entry.cas_counter_check,
                 String::from_utf8_lossy(&debug_entry.value),
             );
 
@@ -646,11 +664,6 @@ impl KVCore {
         };
     }
 
-    fn new_cas_counter(&self, how_many: u64) -> u64 {
-        self.last_used_cas_counter
-            .fetch_add(how_many, Ordering::Relaxed)
-            + 1
-    }
 
     fn should_write_value_to_lsm(&self, entry: &Entry) -> bool {
         entry.value.len() < self.opt.value_threshold
@@ -684,18 +697,6 @@ impl KVCore {
         unsafe { ptr.as_ref().unwrap().clone() }
     }
 
-    pub(crate) fn get_last_used_cas_counter(&self) -> u64 {
-        self.last_used_cas_counter.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn update_last_used_cas_counter(&self, cas: u64) {
-        self.last_used_cas_counter.store(cas, Ordering::Release);
-    }
-
-    pub(crate) fn incr_last_userd_cas_counter(&self, incr: u64) {
-        self.last_used_cas_counter
-            .fetch_add(incr, Ordering::Release);
-    }
 }
 
 pub type WeakKV = XWeak<KVCore>;
@@ -798,7 +799,7 @@ impl KV {
             value_dir_guard: Arc::new(value_dir_guard),
             closers,
             write_ch: Channel::new(KV_WRITE_CH_CAPACITY),
-            last_used_cas_counter: Arc::new(AtomicU64::new(1)),
+            ts_counter: Arc::new(AtomicU64::new(1)),
             mem_st_manger: Arc::new(SkipListManager::new(opt.arena_size() as usize)),
             share_lock: TArcRW::new(tokio::sync::RwLock::new(())),
         };
@@ -860,9 +861,6 @@ impl KV {
         // written value log entry that we replay.  (Subsequent value log entries might be _less_
         // than lastUsedCasCounter, if there was value log gc so we have to max() values while
         // replaying.)
-        xout.get_inner_kv()
-            .update_last_used_cas_counter(item.cas_counter);
-        warn!("the last cas counter: {}", item.cas_counter);
 
         let mut vptr = ValuePointer::default();
         if !item.value.is_empty() {
@@ -893,18 +891,7 @@ impl KV {
                     }
                     _ = first;
                     first = false;
-                    // TODO maybe use comparse set
-                    if xout.get_last_used_cas_counter() < entry.get_cas_counter() {
-                        xout.update_last_used_cas_counter(entry.get_cas_counter());
-                    }
 
-                    // TODO why?
-                    if entry.cas_counter_check != 0 {
-                        let old_value = xout._get(&entry.key)?;
-                        if old_value.cas_counter != entry.cas_counter_check {
-                            return Ok(true);
-                        }
-                    }
                     let mut nv = vec![];
                     let mut meta = entry.meta;
                     if xout.should_write_value_to_lsm(entry) {
@@ -917,8 +904,8 @@ impl KV {
                     let v = ValueStruct {
                         meta,
                         user_meta: entry.user_meta,
-                        cas_counter: entry.get_cas_counter(),
                         value: nv,
+                        version: 0,
                     };
                     while let Err(err) = xout.ensure_room_for_write().await {
                         if count % 1000 == 0 {
@@ -1037,27 +1024,12 @@ impl KV {
         return self._exists(key);
     }
 
+
     /// Batch set entries, returns result sets
     pub async fn batch_set(&self, entries: Vec<Entry>) -> Vec<Result<()>> {
         self.inner.batch_set(entries).await
     }
 
-    /// Asynchronous version of CompareAndSet. It accepts a callback function
-    /// which is called when the CompareAndSet completes. Any error encountered during execution is
-    /// passed as an argument to the callback function.
-    pub async fn compare_and_set(
-        &self,
-        key: Vec<u8>,
-        value: Vec<u8>,
-        cas_counter: u64,
-    ) -> Result<()> {
-        let entry = Entry::default()
-            .key(key)
-            .value(value)
-            .cas_counter_check(cas_counter);
-        let ret = self.batch_set(vec![entry]).await;
-        ret[0].to_owned()
-    }
 
     /// Delete deletes a key.
     /// Exposing this so that user does not have to specify the Entry directly.
@@ -1070,13 +1042,6 @@ impl KV {
         ret[0].to_owned()
     }
 
-    /// CompareAndDelete deletes a key ensuring that it has not been changed since last read.
-    /// If existing key has different casCounter, this would not delete the key and return an error.
-    pub async fn compare_and_delete(&self, key: Vec<u8>, cas_counter: u64) -> Result<()> {
-        let entry = Entry::default().key(key).cas_counter_check(cas_counter);
-        let ret = self.batch_set(vec![entry]).await;
-        ret[0].to_owned()
-    }
 
     /// RunValueLogGC would trigger a value log garbage collection with no guarantees that a call would
     /// result in a space reclaim. Every run would in the best case rewrite only one log file. So,
@@ -1365,12 +1330,9 @@ impl KV {
 
     /// Get the next timestamp for transaction management
     pub async fn get_next_ts(&self) -> Result<u64> {
-        // For now, use a simple counter. In a real implementation, this would
-        // be more sophisticated and handle clock skew, etc.
-        Ok(SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64)
+        // Use the Oracle system for timestamp management
+        // This ensures consistency with transaction timestamps
+        Ok(self.ts_counter.fetch_add(1, Ordering::SeqCst))
     }
 
     /// Delete a key from the database (transaction version)
